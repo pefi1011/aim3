@@ -1,6 +1,8 @@
 scalable-datamining-class
 =========================
 
+- Filip InteliJ commit & push
+
 Hi everyone, 
 
 I will give a short introduction to the workflow required to create the patches for the assignments. Feel free to post 
