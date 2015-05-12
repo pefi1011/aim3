@@ -34,6 +34,8 @@ import java.util.Map;
 
 public class AverageTemperaturePerMonth extends HadoopJob {
 
+  private static final String MINIMUM_QUALITY = "minimumQuality";
+
   @Override
   public int run(String[] args) throws Exception {
     Map<String,String> parsedArgs = parseArgs(args);
@@ -47,7 +49,9 @@ public class AverageTemperaturePerMonth extends HadoopJob {
     Job avgTemperature = prepareJob(inputPath, outputPath, TextInputFormat.class, AverageTemperaturePerMonthMapper.class,
             Text.class, DoubleWritable.class, AverageTemperaturePerMonthReducer.class, Text.class, DoubleWritable.class, TextOutputFormat.class);
 
-      avgTemperature.waitForCompletion(true);
+    avgTemperature.getConfiguration().set(MINIMUM_QUALITY, Double.toString(minimumQuality));
+
+    avgTemperature.waitForCompletion(true);
 
 
     return 0;
@@ -59,7 +63,9 @@ public class AverageTemperaturePerMonth extends HadoopJob {
     protected void map(Object key, Text line, Context ctx) throws IOException, InterruptedException {
       // IMPLEMENT ME
 
-      double minimumQuality = 0.25;
+      // Load settings
+      double minimumQuality = Double.parseDouble(
+              ctx.getConfiguration().get(MINIMUM_QUALITY));
 
       // 1. tokenize lines
       String currentLine = line.toString();
