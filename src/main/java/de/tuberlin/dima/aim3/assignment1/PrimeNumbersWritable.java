@@ -40,11 +40,33 @@ public class PrimeNumbersWritable implements Writable {
   @Override
   public void write(DataOutput out) throws IOException {
     //IMPLEMENT ME
+
+    // TODO where is this written?
+    out.writeInt(numbers.length);
+
+    for (int number : numbers){
+
+
+      out.writeInt(number);
+
+    }
   }
 
   @Override
   public void readFields(DataInput in) throws IOException {
     //IMPLEMENT ME
+
+    // get length of the stream
+     int length =  in.readInt();
+    numbers = new int[length];
+
+    for(int i=0; i<length; i++){
+
+      // get next element
+      numbers[i] = in.readInt();
+    }
+
+
   }
 
   @Override
