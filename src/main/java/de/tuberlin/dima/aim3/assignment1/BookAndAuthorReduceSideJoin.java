@@ -162,12 +162,9 @@ public class BookAndAuthorReduceSideJoin extends HadoopJob {
 
       System.out.println("Start Reducer");
 
-      // We know that we have a one-to-many join,
-      // and we know that the author comes first
-      // (secondary sorting on tag, so "author" comes before "books")
-      // So we just pick the first value as author
-
-      //System.out.println(values.iterator().next().toString());
+      // because of secondary sorting
+      // first result is author
+      // and all other are books
 
       Iterator<Text> iterator = values.iterator();
 
@@ -178,7 +175,7 @@ public class BookAndAuthorReduceSideJoin extends HadoopJob {
       String author = nextValue.split("\t")[1];
 
       // Iterate through book values.
-      // Because of secondory sorting is every value a match.
+      // Because of secondary sorting is every value a match.
       while (iterator.hasNext()) {
 
 
