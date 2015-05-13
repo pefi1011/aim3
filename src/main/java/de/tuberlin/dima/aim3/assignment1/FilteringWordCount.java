@@ -51,6 +51,32 @@ public class FilteringWordCount extends HadoopJob {
     @Override
     protected void map(Object key, Text line, Context ctx) throws IOException, InterruptedException {
       // IMPLEMENT ME
+
+      // 1. tokenize words, i.e. get words out of sentence
+       String currentLine = line.toString();
+
+      currentLine = currentLine.replaceAll("[!?,]", "");
+      String[] words = currentLine.split("\\s+");
+
+      // 2. kill stop words like to, and, in, the...
+      for (String word : words) {
+
+        word = word.toLowerCase();
+
+        if(!word.equals("the") && !word.equals("to") && !word.equals("and") && !word.equals("in")){
+
+          // 3. form a key value par with these words
+          ctx.write(new Text(word), new IntWritable(1));
+
+          System.out.println(word);
+        }
+
+      }
+
+      // TODO
+      // Ask if it makes sense to group in the map phase
+      // because that less data would be sent over the network
+
     }
   }
 
@@ -59,7 +85,24 @@ public class FilteringWordCount extends HadoopJob {
     protected void reduce(Text key, Iterable<IntWritable> values, Context ctx)
         throws IOException, InterruptedException {
       // IMPLEMENT ME
+
+      // 1. aggregate grouped words by keys
+
+      int count = 0;
+
+      while (values.iterator().hasNext()) {
+
+        count = count + values.iterator().next().get();
+
+      }
+
+      ctx.write(key, new IntWritable(count));
+      System.out.println(key.toString() + " "+count);
+
+    }
+
+
+
     }
   }
 
-}
