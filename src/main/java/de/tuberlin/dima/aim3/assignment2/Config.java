@@ -23,7 +23,7 @@ public class Config {
   private Config() {}
 
   public static String pathToSlashdotZoo() {
-    return "/home/ssc/Downloads/out.matrix";
+    return "/Software/Workspace/aim3/slashdotZoo/out.matrix";
   }
 
   public static String outputPath() {

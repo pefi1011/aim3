@@ -19,16 +19,17 @@
 package de.tuberlin.dima.aim3.assignment2;
 
 import com.google.common.collect.Iterables;
-import de.tuberlin.dima.aim3.assignment2.Config;
 import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.functions.GroupReduceFunction;
 import org.apache.flink.api.common.functions.RichGroupReduceFunction;
 import org.apache.flink.api.java.DataSet;
 import org.apache.flink.api.java.ExecutionEnvironment;
+import org.apache.flink.api.java.aggregation.Aggregations;
 import org.apache.flink.api.java.operators.DataSource;
 import org.apache.flink.api.java.tuple.Tuple1;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
+import org.apache.flink.api.java.tuple.Tuple5;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.util.Collector;
@@ -36,7 +37,7 @@ import org.apache.flink.util.Collector;
 import java.util.Iterator;
 import java.util.regex.Pattern;
 
-public class OutDegreeDistribution {
+public class AverageFriendFoeRatio {
 
   public static void main(String[] args) throws Exception {
 
@@ -53,17 +54,28 @@ public class OutDegreeDistribution {
             .union(edges.project(1).types(Long.class)) // mache Union mit Target Spalte, wo es keine Ueberlapung gibt (distinct)
             .distinct().reduceGroup(new CountVertices()); // in reduceGroup zaehle wie viele es Vertexes gibt
 
-    /* Compute the degree of every vertex */ // Zaehle wie viele Beziehungen ein Vertex hat
-    DataSet<Tuple2<Long, Long>> verticesWithDegree =
-        edges.project(0).types(Long.class) // Hole mir nur die Src Spalte Werten
-             .groupBy(0).reduceGroup(new DegreeOfVertex()); // Teile die Src Spalte Werten in Gruppen und dann zaehle, wie groß die Gruppen sind bzw. wie viele Bez. ein Vertex hat
+    /* Zahle wie viele ein vertex Beziehung hat und wie viel davon Freunde und Feinde sind
+    * dabei Beruekcsichtige nur Vertices wo mind. ein Freund und Fein vorhanden ist
+    * */
+    DataSet<Tuple5<Long, Long, Long, Long, Double>> verticesWithFriendsAndFoesDegreeFilteredWithRatio =
+        edges.project(0, 2).types(Long.class, Boolean.class)
+             .groupBy(0).reduceGroup(new DegreeOfFilteredFriendsAndFoesWithRatio());
 
-    /* Compute the degree distribution */
-    DataSet<Tuple2<Long, Double>> degreeDistribution =
-        verticesWithDegree.groupBy(1).reduceGroup(new DistributionElement()) // Gruppiere nach Anzahl von Beziehung bzw. Degree
-                                     .withBroadcastSet(numVertices, "numVertices");
 
-    degreeDistribution.writeAsText(Config.outputPath(), FileSystem.WriteMode.OVERWRITE);
+
+      DataSet<Long> numVerticesFiltered = verticesWithFriendsAndFoesDegreeFilteredWithRatio.project(0).types(Long.class).reduceGroup(new CountVertices());
+
+      // I HATE YOUR FLINK DOCUMENTATION AND YOUR ERROR MGS!!!! I LOST 2 HOURS FOR STUPID THING LIKE FIGURING OUT WHAT DATATYPE YOU WANT!
+     // Tuple1<Double> avgRatio = verticesWithFriendsAndFoesDegreeFilteredWithRatio.project(4).types(Double.class).aggregate(Aggregations.SUM,4).reduceGroup(new CalculateAvgRatio()).withBroadcastSet(numVertices, "numVertices");
+
+     // I HATE YOUR EXCEPTION MSGS AGAIN! WITHOUT GROUP BY (0) I GET /TMP/FLINK FILE NOT FOUND EXCEPTION ????
+     DataSet< Tuple1<Double> > avgRatio = verticesWithFriendsAndFoesDegreeFilteredWithRatio.project(4).types(Double.class).sum(0).groupBy(0).reduceGroup(new CalculateAvgRatio()).withBroadcastSet(numVerticesFiltered, "numVertices");
+
+
+
+
+      /* write results to a file */
+      avgRatio.writeAsText(Config.outputPath(), FileSystem.WriteMode.OVERWRITE);
 
     env.execute();
   }
@@ -110,33 +122,68 @@ public class OutDegreeDistribution {
   }
 
 
-  public static class DegreeOfVertex implements GroupReduceFunction<Tuple1<Long>, Tuple2<Long, Long>> {
+  public static class DegreeOfFilteredFriendsAndFoesWithRatio implements GroupReduceFunction<Tuple2< Long, Boolean>, Tuple5<Long,Long, Long, Long, Double>> {
+
     @Override
-    public void reduce(Iterable<Tuple1<Long>> tuples, Collector<Tuple2<Long, Long>> collector) throws Exception {
+    public void reduce(Iterable<Tuple2< Long, Boolean>> tuples, Collector<Tuple5<Long, Long, Long, Long, Double>> collector) throws Exception {
 
-      System.out.println("BEGIN DegreeOfVertex");
+      System.out.println("BEGIN DegreeOfFilteredFriendsAndFoes");
 
 
-      Iterator<Tuple1<Long>> iterator = tuples.iterator();
-      Long vertexId = iterator.next().f0;
+      Iterator<Tuple2<Long, Boolean>> iterator = tuples.iterator();
 
-      long count = 1L;
+        long count = 1L;
+        long friends = 0L;
+        long foes = 0L;
+
+        Tuple2<Long, Boolean> first = iterator.next();
+        Long vertexId = first.f0;
+
+        if(first.f1)
+            friends++;
+        else
+            foes++;
+
+
+        // get other values
       while (iterator.hasNext()) {
-        iterator.next();
+
+        Boolean isFriend = iterator.next().f1;
+
+        if(isFriend){
+            friends++;
+
+        } else {
+              foes++;
+
+          }
+
+
         count++;
       }
 
-      System.out.println("VertexId: " + vertexId + " Degree: " +count);
+
+        if (friends == 0 | foes == 0) {
+        System.out.println("Skip because vertex:"+ vertexId +" + friends: "+friends+ " and foes: " +foes);
+      }
+      else {
+
+            double ratio = (double) friends / foes;
+
+          System.out.println("VertexId: " + vertexId + "  Degree: " +count + " Friends: " +friends + " Foes: " + foes + " Ratio: "+ratio );
+
+          collector.collect(new Tuple5<Long, Long, Long, Long, Double>(vertexId, count, friends, foes, ratio));
+
+      }
 
 
-      collector.collect(new Tuple2<Long, Long>(vertexId, count));
-
-      System.out.println("STOP DegreeOfVertex");
+      System.out.println("STOP DegreeOfFilteredFriendsAndFoes");
 
     }
   }
 
-  public static class DistributionElement extends RichGroupReduceFunction<Tuple2<Long, Long>, Tuple2<Long, Double>> {
+
+  public static class CalculateAvgRatio extends RichGroupReduceFunction<Tuple1<Double>, Tuple1<Double>> {
 
     private long numVertices;
 
@@ -147,27 +194,26 @@ public class OutDegreeDistribution {
     }
 
     @Override
-    public void reduce(Iterable<Tuple2<Long, Long>> verticesWithDegree, Collector<Tuple2<Long, Double>> collector) throws Exception {
+    public void reduce(Iterable<Tuple1<Double>> ratioSum, Collector<Tuple1<Double>> collector) throws Exception {
 
-      System.out.println("BEGIN DistributionElement");
+      System.out.println("BEGIN CalculateAvgRatio");
+
+       Double avgRatio =  ratioSum.iterator().next().f0;
+
+      System.out.println("Ratio Sum: " + avgRatio);
+        System.out.println("Vertices #: " + numVertices);
+        System.out.println("AvgRatio #: " + avgRatio/numVertices);
 
 
-      Iterator<Tuple2<Long, Long>> iterator = verticesWithDegree.iterator();
-      Long degree = iterator.next().f1;
+              collector.collect(new Tuple1<Double>(avgRatio / numVertices));
 
-      long count = 1L;
-      while (iterator.hasNext()) {
-        iterator.next();
-        count++;
-      }
-
-      System.out.println("Degree: " + degree + " Distribution: " + (double) count / numVertices);
-
-      collector.collect(new Tuple2<Long, Double>(degree, (double) count / numVertices));
-
-      System.out.println("END DistributionElement");
+        System.out.println("END CalculateAvgRatio");
 
     }
   }
+
+
+
+
 
 }
