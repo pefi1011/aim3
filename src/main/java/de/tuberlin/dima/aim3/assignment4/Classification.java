@@ -30,7 +30,7 @@ import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.fs.FileSystem;
 
-import java.util.Map;
+import java.util.*;
 
 public class Classification {
 
@@ -83,23 +83,95 @@ public class Classification {
      public void open(Configuration parameters) throws Exception {
        super.open(parameters);
 
-       // IMPLEMENT ME
+
+         System.out.println("OPEN1");
+
+         // Get the sums
+
+         List<Tuple2<String, Long>> sums = getRuntimeContext().getBroadcastVariable("sums");
+
+         for (Tuple2<String, Long> sum : sums) {
+
+             System.out.println(sum.f0 + " " + sum.f1);
+             wordSums.put(sum.f0, sum.f1);
+         }
+
+         // get the wordCounts
+         List<Tuple3<String, String, Long>> conditionals = getRuntimeContext().getBroadcastVariable("conditionals");
+
+         for (Tuple3<String, String, Long> conditional : conditionals ) {
+
+             if (!wordCounts.containsKey(conditional.f0)) {
+                 wordCounts.put(conditional.f0, new HashMap<String, Long>());
+             }
+
+             wordCounts.get(conditional.f0).put(conditional.f1, conditional.f2);
+         }
+
      }
 
      @Override
      public Tuple3<String, String, Double> map(String line) throws Exception {
 
-       String[] tokens = line.split("\t");
-       String label = tokens[0];
-       String[] terms = tokens[1].split(",");
+         String[] tokens = line.split("\t");
+         String label = tokens[0];
+         String[] terms = tokens[1].split(",");
 
-       double maxProbability = Double.NEGATIVE_INFINITY;
-       String predictionLabel = "";
+         double maxProbability = Double.NEGATIVE_INFINITY;
 
-       // IMPLEMENT ME
+         String predictionLabel = "";
+
+         Long totalSum = 0L;
+         for (Map.Entry<String, Long> entry : wordSums.entrySet())
+         {
+             totalSum += entry.getValue();
+         }
+         // We have all the needed information. Now we have to implement the classifier
+
+         // Classifier implementation
+
+
+         // Iterate through all labels
+         //for (Map.Entry<String, Map<String, Long>> entry : wordCounts.entrySet()) {
+
+         for (Map.Entry<String, Long> entry : wordSums.entrySet()) {
+
+             String currentLabel = entry.getKey();
+
+
+             Long wordSumForLabel = entry.getValue();
+
+             // The first part of the probability formula is log(P(Y))       Y is a label
+             Double probability = Math.log( wordSumForLabel.doubleValue() / totalSum.doubleValue());
+             //System.out.println(" P(y) = " + wordSumForLabel.doubleValue() / totalSum.doubleValue() + "                " + currentLabel);
+
+
+             Map<String, Long> currentTermsForLabel = wordCounts.get(currentLabel);
+             // The second part of th probability formula is Sum ( log( P ( fi | y ) ) )    fi is a word i for label
+             for (String term : terms) {
+
+                 Long termCountForLabel = currentTermsForLabel.get(term);
+
+                 if (termCountForLabel != null) {
+                     probability = probability + Math.log( termCountForLabel.doubleValue() / wordSumForLabel);
+                     //System.out.println("P(fi | y )" + termCountForLabel.doubleValue() / wordSumForLabel);
+                 }
+             }
+
+             if ( probability > maxProbability) {
+                 //System.out.println("OLD " + maxProbability + " NEW " + probability + " LABEL " + currentLabel);
+                 maxProbability = probability;
+                 predictionLabel = currentLabel;
+             }
+
+         }
+
+       //System.out.println("OUTPUT " + label + " " + predictionLabel + " " + maxProbability);
 
        return new Tuple3<String, String, Double>(label, predictionLabel, maxProbability);
      }
+
+
    }
 
 }
