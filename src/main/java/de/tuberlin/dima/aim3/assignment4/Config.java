@@ -30,7 +30,7 @@ public class Config {
   }
 
   public static String pathToTestSet() {
-    return INPUT_PATH + "test.tab";
+    return INPUT_PATH + "secrettest.dat";
   }
 
   public static String pathToOutput() {

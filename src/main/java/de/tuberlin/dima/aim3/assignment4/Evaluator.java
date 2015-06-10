@@ -62,22 +62,17 @@ public class Evaluator {
     public void reduce(Iterable<Tuple3<String, String, Double>> predictions, Collector<String> collector)
         throws Exception {
 
-      double accuracy = 0.0;
+      double accuracy;
 
-      Iterator it = predictions.iterator();
-      while (it.hasNext()) {
+      for (Iterator it = predictions.iterator(); it.hasNext(); ) {
         Tuple3<String, String, Double> tuple = (Tuple3<String, String, Double>) it.next();
-
-        if (tuple.f0 == tuple.f1) {
-          correct++;
+        if (tuple.f0.equals(tuple.f1)) {
+          correct ++;
         }
-
         total++;
-
       }
 
       accuracy = correct / total;
-
       collector.collect("Classifier achieved: " + accuracy + " % accuracy");
     }
   }

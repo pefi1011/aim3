@@ -31,6 +31,7 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.fs.FileSystem;
 
 import java.util.*;
+import java.util.Map.Entry;
 
 public class Classification {
 
@@ -78,34 +79,27 @@ public class Classification {
 
      private final Map<String, Map<String, Long>> wordCounts = Maps.newHashMap();
      private final Map<String, Long> wordSums = Maps.newHashMap();
+     private final Long smoothingParameter = 3L;
 
-     @Override
+
+      @Override
      public void open(Configuration parameters) throws Exception {
        super.open(parameters);
 
-
-         System.out.println("OPEN1");
-
-         // Get the sums
-
          List<Tuple2<String, Long>> sums = getRuntimeContext().getBroadcastVariable("sums");
 
-         for (Tuple2<String, Long> sum : sums) {
-
-             System.out.println(sum.f0 + " " + sum.f1);
-             wordSums.put(sum.f0, sum.f1);
+         for (Tuple2<String, Long> t2 : sums) {
+             wordSums.put(t2.f0, t2.f1);
          }
 
-         // get the wordCounts
          List<Tuple3<String, String, Long>> conditionals = getRuntimeContext().getBroadcastVariable("conditionals");
 
-         for (Tuple3<String, String, Long> conditional : conditionals ) {
+         for (Tuple3<String, String, Long> t3 : conditionals ) {
 
-             if (!wordCounts.containsKey(conditional.f0)) {
-                 wordCounts.put(conditional.f0, new HashMap<String, Long>());
+             if (!wordCounts.containsKey(t3.f0)) {
+                 wordCounts.put(t3.f0, new HashMap<String, Long>());
              }
-
-             wordCounts.get(conditional.f0).put(conditional.f1, conditional.f2);
+             wordCounts.get(t3.f0).put(t3.f1, t3.f2);
          }
 
      }
@@ -115,60 +109,51 @@ public class Classification {
 
          String[] tokens = line.split("\t");
          String label = tokens[0];
-         String[] terms = tokens[1].split(",");
+         String[] words = tokens[1].split(",");
 
+         Set<String> wordsSet = new HashSet<String>(Arrays.asList(words));
          double maxProbability = Double.NEGATIVE_INFINITY;
 
          String predictionLabel = "";
 
-         Long totalSum = 0L;
-         for (Map.Entry<String, Long> entry : wordSums.entrySet())
-         {
-             totalSum += entry.getValue();
-         }
-         // We have all the needed information. Now we have to implement the classifier
+         Iterator entries = wordSums.entrySet().iterator();
+         while (entries.hasNext()) {
 
-         // Classifier implementation
+             Entry entry = (Entry) entries.next();
+             String lab = (String) entry.getKey();
+             Long wordSumForLabel = (Long) entry.getValue();
 
+             Double prob = Math.log( wordSumForLabel );
 
-         // Iterate through all labels
-         //for (Map.Entry<String, Map<String, Long>> entry : wordCounts.entrySet()) {
-
-         for (Map.Entry<String, Long> entry : wordSums.entrySet()) {
-
-             String currentLabel = entry.getKey();
+             Map<String, Long> currentTermsForLabel = wordCounts.get(lab);
 
 
-             Long wordSumForLabel = entry.getValue();
+             for (String word : words) {
 
-             // The first part of the probability formula is log(P(Y))       Y is a label
-             Double probability = Math.log( wordSumForLabel.doubleValue() / totalSum.doubleValue());
-             //System.out.println(" P(y) = " + wordSumForLabel.doubleValue() / totalSum.doubleValue() + "                " + currentLabel);
-
-
-             Map<String, Long> currentTermsForLabel = wordCounts.get(currentLabel);
-             // The second part of th probability formula is Sum ( log( P ( fi | y ) ) )    fi is a word i for label
-             for (String term : terms) {
-
-                 Long termCountForLabel = currentTermsForLabel.get(term);
+                 Long termCountForLabel = currentTermsForLabel.get(word);
 
                  if (termCountForLabel != null) {
-                     probability = probability + Math.log( termCountForLabel.doubleValue() / wordSumForLabel);
-                     //System.out.println("P(fi | y )" + termCountForLabel.doubleValue() / wordSumForLabel);
+                     prob += Math.log( termCountForLabel +  smoothingParameter);
+                 } else {
+                     prob += Math.log( smoothingParameter );
                  }
              }
 
-             if ( probability > maxProbability) {
-                 //System.out.println("OLD " + maxProbability + " NEW " + probability + " LABEL " + currentLabel);
-                 maxProbability = probability;
-                 predictionLabel = currentLabel;
+             double den = wordSums.get(lab) + (smoothingParameter * wordsSet.size());
+
+             prob -= ( words.length * Math.log( den ) );
+
+             if ( prob > maxProbability) {
+                 predictionLabel = lab;
+
+                 maxProbability = prob;
              }
 
          }
 
-       //System.out.println("OUTPUT " + label + " " + predictionLabel + " " + maxProbability);
-
        return new Tuple3<String, String, Double>(label, predictionLabel, maxProbability);
+
+
      }
 
 
