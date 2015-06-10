@@ -151,7 +151,7 @@ public class Classification {
 
          }
 
-       return new Tuple3<String, String, Double>(label, predictionLabel, maxProbability);
+       return new Tuple3<String, String, Double>(label, predictionLabel, Math.exp(maxProbability));
 
 
      }
